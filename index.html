@@ -59,11 +59,12 @@
   --scene-dur:.95s;
   --radius-xl:36px;
 
-  transition:
-    --glow-core var(--scene-dur) var(--ease-lux), --glow-mid var(--scene-dur) var(--ease-lux), --glow-edge var(--scene-dur) var(--ease-lux),
-    --bg-1 var(--scene-dur) var(--ease-lux), --bg-2 var(--scene-dur) var(--ease-lux), --bg-3 var(--scene-dur) var(--ease-lux),
-    --accent var(--scene-dur) var(--ease-lux), --accent-soft var(--scene-dur) var(--ease-lux), --shadow-color var(--scene-dur) var(--ease-lux),
-    --key-light var(--scene-dur) var(--ease-lux), --rim-light var(--scene-dur) var(--ease-lux);
+  /* PERF: theme colours are set on :root instantly; only the few leaf elements that paint the
+     lighting tween them (via --tt), so a product switch never restyles the whole document per frame */
+  --tt:--glow-core .95s var(--ease-lux), --glow-mid .95s var(--ease-lux), --glow-edge .95s var(--ease-lux),
+    --bg-1 .95s var(--ease-lux), --bg-2 .95s var(--ease-lux), --bg-3 .95s var(--ease-lux),
+    --accent .95s var(--ease-lux), --accent-soft .95s var(--ease-lux), --shadow-color .95s var(--ease-lux),
+    --key-light .95s var(--ease-lux), --rim-light .95s var(--ease-lux);
 }
 
 /* ==========================================================
@@ -73,6 +74,7 @@
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{min-height:100vh;font-family:var(--font-ui);color:var(--text-primary);-webkit-font-smoothing:antialiased;overflow-x:hidden;line-height:1.5}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:inherit}
+button,a,[role="radio"],input,textarea{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 a{color:inherit;text-decoration:none}
 ul{list-style:none}
 svg{display:block}
@@ -84,8 +86,12 @@ svg{display:block}
    BACKGROUND
    ========================================================== */
 body{background-color:var(--bg-3)}
-.scene{ /* fixed scene layer: viewport-sized glow, drifts with scroll + mouse */
-  position:fixed;inset:-12% -4%;z-index:0;pointer-events:none;
+.scene-wrap{ /* fixed scene: viewport-sized glow, drifts with scroll + mouse (JS transform) */
+  position:fixed;inset:-12% -4%;z-index:0;pointer-events:none;will-change:transform;
+}
+/* PERF: two scene layers; a product switch paints the new theme on the hidden one and fades it in
+   with opacity only — the huge gradients are never repainted frame by frame */
+.scene{position:absolute;inset:0;opacity:0;
   background-image:
     radial-gradient(ellipse 45% 55% at 50% 52%, color-mix(in srgb, var(--glow-core) 55%, transparent) 0%, transparent 70%),
     radial-gradient(ellipse 70% 75% at 50% 55%, color-mix(in srgb, var(--glow-mid) 55%, transparent) 0%, transparent 72%),
@@ -93,12 +99,14 @@ body{background-color:var(--bg-3)}
     radial-gradient(ellipse 55% 45% at 92% 95%, color-mix(in srgb, var(--glow-edge) 60%, transparent) 0%, transparent 70%),
     radial-gradient(ellipse 120% 100% at 50% 50%, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
 }
+.scene.is-front{opacity:1;z-index:2;transition:opacity .95s var(--ease-lux)}
+.scene.is-back{opacity:1;z-index:1}
 body::before{
   content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse 90% 80% at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);
 }
 body::after{
-  content:"";position:fixed;inset:-50%;pointer-events:none;z-index:0;opacity:.07;mix-blend-mode:overlay;
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.035; /* PERF: no full-screen blend mode */
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -111,13 +119,19 @@ body::after{
   width:96vw;max-width:1680px;
   display:flex;flex-direction:column;
   border-radius:var(--radius-xl);
-  background:
-    radial-gradient(ellipse 38% 44% at 50% 30%, color-mix(in srgb, var(--glow-core) 30%, transparent) 0%, color-mix(in srgb, var(--glow-mid) 12%, transparent) 45%, transparent 75%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 62%, transparent) 0%, color-mix(in srgb, var(--bg-3) 80%, transparent) 60%);
   border:1px solid var(--glass-border);
   box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.06), inset 0 0 120px rgba(0,0,0,.35);
   overflow:hidden;overflow:clip; /* clip keeps the sticky nav working */
 }
+.showroom::after{ /* PERF: the showroom tint lives on a leaf layer so its colour tween restyles one node */
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-3;
+  background:linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 62%, transparent) 0%, color-mix(in srgb, var(--bg-3) 80%, transparent) 60%);
+}
+.tint-wrap{position:absolute;left:0;right:0;top:0;height:min(1500px,150vh);z-index:-2;pointer-events:none;border-radius:inherit;overflow:hidden}
+.tint{position:absolute;inset:0;opacity:0;
+  background:radial-gradient(ellipse 40% 42% at 50% 34%, color-mix(in srgb, var(--glow-core) 30%, transparent) 0%, color-mix(in srgb, var(--glow-mid) 12%, transparent) 45%, transparent 75%)}
+.tint.is-front{opacity:1;z-index:2;transition:opacity .95s var(--ease-lux)}
+.tint.is-back{opacity:1;z-index:1}
 .showroom::before{
   content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;
   background:linear-gradient(160deg, rgba(255,255,255,.06) 0%, transparent 18%, transparent 80%, color-mix(in srgb, var(--accent) 5%, transparent) 100%);
@@ -132,17 +146,15 @@ body::after{
   display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:24px;
   padding:12px clamp(12px,1.8vw,28px);border-radius:28px;
   border:1px solid transparent;
-  transition:background-color .6s var(--ease-lux), border-color .6s var(--ease-lux), box-shadow .6s var(--ease-lux), transform .6s var(--ease-lux), padding .6s var(--ease-lux);
+  transition:background-color .5s var(--ease-lux), border-color .5s var(--ease-lux), transform .5s var(--ease-lux);
 }
 .nav.is-scrolled .nav-bar{
   transform:scale(.97);
-  padding-top:8px;padding-bottom:8px;
   background:color-mix(in srgb, var(--bg-2) 90%, transparent);
   border-color:var(--glass-border);
   backdrop-filter:blur(26px) saturate(140%);-webkit-backdrop-filter:blur(26px) saturate(140%);
   box-shadow:0 18px 50px -20px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.06);
 }
-.nav.is-scrolled .icon-btn{width:40px;height:40px}
 .logo{display:inline-flex;align-items:center;gap:12px;font-weight:700;font-size:15px;letter-spacing:.32em;text-transform:uppercase;white-space:nowrap}
 .logo-mark{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--glass-border-strong);background:var(--glass-light)}
 .logo-mark svg{width:14px;height:14px}
@@ -150,8 +162,7 @@ body::after{
 
 .nav-pill{
   display:flex;gap:4px;padding:5px;border-radius:999px;
-  background:var(--glass-strong);border:1px solid var(--glass-border);
-  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  background:rgba(14,9,7,.78);border:1px solid var(--glass-border);
   box-shadow:0 8px 30px -10px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05);
 }
 .nav-link{
@@ -166,7 +177,7 @@ body::after{
 .icon-btn{
   position:relative;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
   background:var(--glass-light);border:1px solid var(--glass-border);
-  transition:transform .45s var(--ease-lux), background-color .45s var(--ease-lux), border-color .45s var(--ease-lux), width .5s var(--ease-lux), height .5s var(--ease-lux);
+  transition:transform .3s var(--ease-lux), background-color .3s var(--ease-lux), border-color .3s var(--ease-lux);
 }
 .icon-btn svg{width:18px;height:18px}
 .icon-btn:hover{transform:scale(1.08);background:rgba(255,255,255,.12);border-color:var(--glass-border-strong)}
@@ -176,7 +187,7 @@ body::after{
 .cart-count{
   position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;
   display:grid;place-items:center;font-size:10px;font-weight:700;
-  background:var(--accent);color:#1a0c03;box-shadow:0 0 0 2px #140a05;
+  background:var(--accent);color:#1a0c03;box-shadow:0 0 0 2px #140a05;transition:background-color .8s var(--ease-lux);
 }
 .cart-count.bump{animation:bump .6s var(--ease-lux)}
 
@@ -184,20 +195,19 @@ body::after{
    OVERLAYS — one layer system: cart drawer, modals, mobile menu
    ========================================================== */
 html.is-locked{overflow:hidden}
-.scrim{position:fixed;inset:0;z-index:70;background:rgba(4,2,1,.62);
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);opacity:0;transition:opacity .45s var(--ease-lux)}
+.scrim{position:fixed;inset:0;z-index:70;background:rgba(4,2,1,.72);opacity:0;transition:opacity .45s var(--ease-lux)}
 .scrim.is-open{opacity:1}
 .ui-layer{position:fixed;z-index:80}
 .glass-panel{
   background:linear-gradient(180deg, color-mix(in srgb, var(--bg-1) 86%, transparent), color-mix(in srgb, var(--bg-3) 92%, transparent));
   border:1px solid var(--glass-border-strong);
-  backdrop-filter:blur(28px) saturate(140%);-webkit-backdrop-filter:blur(28px) saturate(140%);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   box-shadow:0 40px 120px -30px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.07);
 }
 .close-btn{width:44px;height:44px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid var(--glass-border-strong);background:rgba(255,255,255,.04);transition:background-color .3s, transform .4s var(--ease-lux)}
 .close-btn:hover{background:rgba(255,255,255,.12);transform:rotate(90deg)}
 .close-btn svg{width:15px;height:15px}
-.jk{display:block;width:100%}
+.jk{display:block;width:100%;aspect-ratio:500/560}
 .jk svg{display:block;width:100%;height:auto}
 
 /* cart drawer */
@@ -289,8 +299,8 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .qv{display:grid;grid-template-columns:1.05fr 1fr;min-height:560px}
 .qv-visual{position:relative;display:grid;place-items:center;padding:48px 32px;overflow:hidden;border-right:1px solid var(--glass-border);
   background:radial-gradient(ellipse 70% 60% at 50% 45%, color-mix(in srgb, var(--j-mid) 40%, transparent), transparent 70%)}
-.qv-visual .jk{position:relative;z-index:1;width:min(80%,380px);animation:productFloat 6s ease-in-out infinite;filter:drop-shadow(0 30px 30px rgba(0,0,0,.55))}
-.qv-visual::after{content:"";position:absolute;left:25%;right:25%;bottom:9%;height:24px;border-radius:50%;background:radial-gradient(ellipse, rgba(0,0,0,.65), transparent 70%);filter:blur(4px)}
+.qv-visual .jk{position:relative;z-index:1;width:min(80%,380px);animation:productFloat 6s ease-in-out infinite;will-change:transform}
+.qv-visual::after{content:"";position:absolute;left:25%;right:25%;bottom:9%;height:24px;border-radius:50%;background:radial-gradient(ellipse, rgba(0,0,0,.6), transparent 70%)}
 .qv-info{padding:48px 40px 36px;display:flex;flex-direction:column;gap:20px}
 .qv-name{font-family:var(--font-display);font-size:clamp(34px,3.4vw,44px);font-weight:400;line-height:1}
 .qv-price{display:flex;align-items:baseline;gap:12px;font-family:var(--font-display);font-size:34px}
@@ -361,6 +371,17 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .success-text{font-size:14px;color:var(--text-secondary);max-width:42ch;line-height:1.7}
 .success .btn-solid{width:auto;min-width:260px;margin-top:10px}
 
+/* search */
+.search-results{display:flex;flex-direction:column;gap:8px;max-height:min(52vh,420px);overflow:auto;overscroll-behavior:contain}
+.search-hit{display:grid;grid-template-columns:52px 1fr auto;gap:14px;align-items:center;width:100%;min-height:72px;padding:8px 14px 8px 8px;border-radius:16px;
+  border:1px solid var(--glass-border);background:rgba(255,255,255,.03);transition:background-color .2s, border-color .2s}
+.search-hit:hover,.search-hit:focus-visible{background:rgba(255,255,255,.09);border-color:var(--glass-border-strong)}
+.search-hit .thumb-box{width:52px;height:60px;border-radius:12px}
+.search-hit .thumb-box .jk{width:42px}
+.search-hit b{display:block;font-size:14px;font-weight:600}
+.search-hit small{font-size:11px;color:var(--text-muted)}
+.search-empty{font-size:13px;color:var(--text-secondary)}
+
 /* mobile menu */
 .menu-btn{display:none}
 .mobile-menu{inset:0;display:flex;flex-direction:column;padding:18px 18px 28px;
@@ -368,7 +389,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   clip-path:circle(0% at calc(100% - 42px) 42px);transition:clip-path .75s var(--ease-cine)}
 .mobile-menu.is-open{clip-path:circle(160% at calc(100% - 42px) 42px)}
 .mobile-menu::before{content:"";position:absolute;left:-20%;top:30%;width:90%;aspect-ratio:1;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle, color-mix(in srgb, var(--glow-core) 26%, transparent), transparent 65%)}
+  background:radial-gradient(circle, color-mix(in srgb, var(--glow-core) 26%, transparent), transparent 65%);transition:var(--tt)}
 .mm-head{position:relative;display:flex;justify-content:space-between;align-items:center;padding:6px 4px}
 .mm-links{position:relative;margin:auto 0;display:flex;flex-direction:column}
 .mm-link{display:flex;align-items:baseline;gap:16px;padding:14px 4px;border-bottom:1px solid var(--glass-border);
@@ -410,18 +431,16 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 
 /* ==========================================================
    HERO
-   --sp: scroll progress (0…1, JS). Mouse depth transforms are written by the loop.
+   Scroll + mouse depth transforms are written directly by the single rAF loop.
    ========================================================== */
 .hero{
-  --sp:0;
   position:relative;
   min-height:calc(92vh - 80px);
   display:grid;grid-template-columns:28fr 44fr 28fr;
   gap:clamp(12px,2vw,32px);
   padding:clamp(16px,2.6vh,36px) clamp(20px,3vw,48px) clamp(28px,4vh,48px);
 }
-.hero-left,.hero-right{display:flex;flex-direction:column;min-width:0;position:relative;z-index:5;
-  opacity:calc(1 - var(--sp) * .75);transform:translate3d(0, calc(var(--sp) * -28px), 0)}
+.hero-left,.hero-right{display:flex;flex-direction:column;min-width:0;position:relative;z-index:5}
 .hero-left{justify-content:space-between;gap:36px}
 
 /* ambient particles (back depth layer) */
@@ -447,9 +466,9 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .slide-index{display:flex;align-items:center;gap:10px;margin-left:8px;font-size:11px;letter-spacing:.2em;color:var(--text-muted)}
 .slide-index b{color:var(--text-primary);font-weight:600;display:inline-block}
 .slide-index i{display:block;width:34px;height:1px;background:var(--glass-border-strong);position:relative;overflow:hidden}
-.slide-index i::after{content:"";position:absolute;inset:0;background:var(--accent);transform-origin:left;transform:scaleX(var(--progress,.25));transition:transform .7s var(--ease-lux)}
+.slide-index i::after{content:"";position:absolute;inset:0;background:var(--accent);transform-origin:left;transform:scaleX(var(--progress,.25));transition:transform .7s var(--ease-lux), background-color .8s}
 
-.eyebrow{font-size:11px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--accent)}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);transition:color .8s var(--ease-lux)}
 .headline{
   font-family:var(--font-display);font-weight:400;
   font-size:clamp(48px,6vw,96px);line-height:.9;letter-spacing:-.02em;
@@ -457,7 +476,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 }
 .headline em{display:block;font-style:italic;color:transparent;
   background:linear-gradient(100deg,#fff3e2 0%, var(--accent-soft) 55%, var(--accent) 100%);-webkit-background-clip:text;background-clip:text;
-  padding:0 .08em .12em 0;margin-bottom:-.12em}
+  padding:0 .08em .12em 0;margin-bottom:-.12em;transition:var(--tt)}
 .lede{max-width:34ch;font-size:15px;font-weight:300;color:var(--text-secondary);line-height:1.7}
 
 .socials{display:flex;flex-wrap:wrap;gap:22px;align-items:center}
@@ -479,7 +498,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   position:relative;width:100%;max-width:580px;aspect-ratio:500/600;
   display:flex;align-items:center;justify-content:center;
   perspective:1200px;perspective-origin:50% 45%;
-  transform:translate3d(0, calc(var(--sp) * 36px), 0) scale(calc(1 - var(--sp) * .1));
+  will-change:transform;
   transform-origin:50% 30%;
 }
 .layer{position:absolute;inset:0;pointer-events:none}
@@ -489,12 +508,13 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);
   font-family:var(--font-display);font-size:clamp(90px,13vw,230px);font-style:italic;letter-spacing:-.03em;line-height:1;white-space:nowrap;
   color:transparent;-webkit-text-stroke:1px color-mix(in srgb, var(--accent-soft) 16%, transparent);
-  user-select:none;
+  user-select:none;transition:var(--tt);
 }
 .stage-ring{
   position:absolute;left:50%;top:45%;width:78%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;
   border:1px solid color-mix(in srgb, var(--accent-soft) 12%, transparent);
   box-shadow:inset 0 0 60px color-mix(in srgb, var(--accent) 8%, transparent);
+  transition:var(--tt);
 }
 
 .stage-glow{ /* back ambient light */
@@ -503,22 +523,22 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
     color-mix(in srgb, var(--glow-core) 75%, transparent) 0%,
     color-mix(in srgb, var(--glow-mid) 38%, transparent) 32%,
     color-mix(in srgb, var(--glow-mid) 8%, transparent) 58%, transparent 70%);
-  filter:blur(18px);
   animation:glowBreath 6s ease-in-out infinite;
+  will-change:transform,opacity;transition:var(--tt);
 }
 .rim-light{ /* back-right rim that peeks around the silhouette */
   position:absolute;left:50%;top:42%;width:78%;height:70%;transform:translate(-50%,-50%);border-radius:50%;
   background:
     radial-gradient(ellipse 34% 52% at 78% 44%, color-mix(in srgb, var(--rim-light) 42%, transparent) 0%, transparent 70%),
     radial-gradient(ellipse 30% 40% at 20% 30%, color-mix(in srgb, var(--key-light) 18%, transparent) 0%, transparent 70%);
-  filter:blur(22px);
+  transition:var(--tt);
 }
 .stage-flare{
   position:absolute;left:50%;top:44%;width:70%;aspect-ratio:1;border-radius:50%;
   transform:translate(-50%,-50%) scale(.8);opacity:0;
   background:radial-gradient(circle, color-mix(in srgb, var(--key-light) 50%, transparent) 0%, transparent 62%);
-  filter:blur(20px);
-  transition:opacity .6s var(--ease-lux), transform .9s var(--ease-lux);
+  will-change:transform,opacity;
+  transition:opacity .6s var(--ease-lux), transform .9s var(--ease-lux), var(--tt);
 }
 .stage.product-changing .stage-flare{opacity:.5;transform:translate(-50%,-50%) scale(1.1)}
 .stage.is-hover .stage-flare{opacity:.28;transform:translate(-50%,-50%) scale(1)}
@@ -529,7 +549,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .floor-light{
   position:absolute;left:50%;top:88%;width:86%;height:16%;transform:translate(-50%,-50%);border-radius:50%;
   background:radial-gradient(ellipse at center, color-mix(in srgb, var(--glow-mid) 34%, transparent) 0%, transparent 70%);
-  filter:blur(12px);
+  transition:var(--tt);
 }
 .floor-shadow-wrap{position:absolute;inset:0;transition:transform .8s var(--ease-lux), opacity .8s var(--ease-lux)}
 .stage.is-hover .floor-shadow-wrap{transform:scaleX(1.06);opacity:.82}
@@ -539,6 +559,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
     color-mix(in srgb, var(--shadow-color) 92%, transparent) 0%,
     color-mix(in srgb, var(--shadow-color) 45%, transparent) 42%, transparent 72%);
   animation:shadowFloat 6s ease-in-out infinite;
+  will-change:transform,opacity;transition:var(--tt);
 }
 .reflection{
   position:absolute;left:6%;width:88%;top:64%;
@@ -546,6 +567,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   -webkit-mask-image:linear-gradient(180deg, transparent 27%, #000 31%, rgba(0,0,0,.35) 38%, transparent 47%);
   mask-image:linear-gradient(180deg, transparent 27%, #000 31%, rgba(0,0,0,.35) 38%, transparent 47%);
   animation:reflectFloat 6s ease-in-out infinite;
+  will-change:transform,opacity;
 }
 .reflection svg{width:100%;height:auto;transform:scaleY(-.5) skewX(-4deg);filter:blur(3px)}
 .reflection-swap{transition:opacity .55s var(--ease-lux)}
@@ -554,40 +576,38 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .product-parallax{
   position:relative;z-index:2;width:88%;
   transform-style:preserve-3d;
-  will-change:transform;
 }
 .product-intro,.product-hover,.product-float,.product-swap{transform-style:preserve-3d}
 .product-hover{transition:transform .9s var(--ease-cine)}
 .stage.is-hover .product-hover{transform:scale(1.025) translateZ(24px)}
-.product-float{animation:productFloat 6s ease-in-out infinite}
-.product-swap{transition:opacity .56s var(--ease-lux), transform .62s var(--ease-cine), filter .5s var(--ease-lux)}
+.product-float{animation:productFloat 6s ease-in-out infinite;will-change:transform}
+.product-swap{aspect-ratio:500/560;will-change:transform,opacity;transition:opacity .5s var(--ease-lux), transform .58s var(--ease-cine)}
 .product-swap svg{width:100%;height:auto;overflow:visible;
-  filter:drop-shadow(0 30px 40px rgba(0,0,0,.55))
-         drop-shadow(5px -3px 12px color-mix(in srgb, var(--rim-light) 28%, transparent))
-         drop-shadow(0 0 26px color-mix(in srgb, var(--glow-core) 18%, transparent));
+  /* PERF: shadow + rim glow are baked into the SVG as soft gradients (no per-frame CSS filter) */
 }
 
 /* switch transition states (≈950ms total) */
 .stage.product-exit .product-swap{
-  transition:opacity .4s ease-in, transform .42s cubic-bezier(.55,0,.8,.3), filter .4s ease-in;
-  opacity:0;filter:blur(5px);
+  transition:opacity .32s ease-in, transform .34s cubic-bezier(.55,0,.8,.3);
+  opacity:0;
   transform:translateX(calc(var(--dir) * -16px)) rotateY(calc(var(--dir) * -5deg)) scale(.94);
 }
 .stage.product-enter .product-swap{
-  transition:none;opacity:0;filter:blur(5px);
+  transition:none;opacity:0;
   transform:translate3d(calc(var(--dir) * 16px), 10px, 0) rotateY(calc(var(--dir) * 3deg)) scale(.95);
 }
 .stage.product-exit .reflection-swap,.stage.product-enter .reflection-swap{opacity:0}
 
 /* foreground: key light + haze, moves opposite */
 .layer-front{
-  z-index:3;inset:-8%;mix-blend-mode:screen;opacity:.8;
+  z-index:3;inset:-8%;opacity:.7;
   background:
     radial-gradient(ellipse 36% 30% at 32% 26%, color-mix(in srgb, var(--key-light) 20%, transparent) 0%, transparent 70%),
     radial-gradient(ellipse 60% 14% at 50% 94%, color-mix(in srgb, var(--glow-core) 12%, transparent) 0%, transparent 70%);
-  transition:opacity .9s var(--ease-lux);
+  transition:opacity .9s var(--ease-lux), var(--tt);
 }
-.stage.is-hover .layer-front{opacity:1}
+.stage.is-hover .layer-front{opacity:.95}
+.parallax-on .layer-back,.parallax-on .layer-glow,.parallax-on .layer-front,.parallax-on .particles,.parallax-on .product-parallax,.parallax-on .hotspot{will-change:transform}
 
 .stage-caption{
   position:absolute;z-index:4;left:50%;bottom:-6px;transform:translateX(-50%);
@@ -615,12 +635,12 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .price sup{font-size:.42em;vertical-align:top;position:relative;top:.18em;margin-right:2px;font-weight:400}
 .price-meta{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding-bottom:6px}
 .price-old{font-size:17px;color:var(--text-muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb, var(--accent) 70%, transparent);text-decoration-thickness:1.5px}
-.price-tag{font-size:10px;font-weight:700;letter-spacing:.16em;padding:4px 9px;border-radius:999px;color:#1a0c03;background:var(--accent)}
+.price-tag{font-size:10px;font-weight:700;letter-spacing:.16em;padding:4px 9px;border-radius:999px;color:#1a0c03;background:var(--accent);transition:background-color .8s var(--ease-lux)}
 .divider{height:1px;background:linear-gradient(90deg, var(--glass-border-strong), transparent)}
 
-.swap{display:inline-block;transition:opacity .32s var(--ease-lux), transform .5s var(--ease-lux), filter .32s var(--ease-lux)}
-.swap.swap-out{opacity:0;transform:translateY(-14px);filter:blur(4px)}
-.swap.swap-in{transition:none;opacity:0;transform:translateY(14px);filter:blur(4px)}
+.swap{display:inline-block;transition:opacity .26s var(--ease-lux), transform .42s var(--ease-lux)}
+.swap.swap-out{opacity:0;transform:translateY(-12px)}
+.swap.swap-in{transition:none;opacity:0;transform:translateY(12px)}
 
 .label{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:14px}
 .label a{font-weight:500;letter-spacing:.12em;color:var(--text-muted);text-decoration:underline;text-underline-offset:3px;transition:color .3s}
@@ -631,13 +651,13 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .size-indicator{
   position:absolute;left:0;top:0;height:48px;width:58px;border-radius:999px;z-index:0;pointer-events:none;
   background:#f7f1ea;box-shadow:0 8px 24px -8px rgba(255,255,255,.45);
-  transition:transform .55s cubic-bezier(.34,1.3,.5,1), width .4s var(--ease-lux);
+  transition:transform .45s cubic-bezier(.34,1.3,.5,1);
 }
 .size-btn{
   position:relative;z-index:1;
   width:58px;height:48px;border-radius:999px;font-size:14px;font-weight:600;text-align:center;
   border:1px solid var(--glass-border-strong);background:rgba(255,255,255,.035);color:var(--text-primary);
-  transition:transform .4s var(--ease-lux), background-color .45s var(--ease-lux), color .35s var(--ease-lux), border-color .45s var(--ease-lux);
+  transition:transform .3s var(--ease-lux), background-color .3s var(--ease-lux), color .25s var(--ease-lux), border-color .3s var(--ease-lux);
 }
 .size-btn:hover{transform:scale(1.06);border-color:rgba(255,255,255,.35)}
 .size-btn:active{transform:scale(.95)}
@@ -649,8 +669,8 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   position:relative;flex:1 0 68px;max-width:84px;aspect-ratio:4/5;border-radius:18px;padding:9px 7px 22px;scroll-snap-align:start;
   background:radial-gradient(ellipse 80% 70% at 50% 45%, color-mix(in srgb, var(--j-mid) 26%, transparent), rgba(255,255,255,.03) 72%);
   border:1px solid var(--glass-border);
-  filter:brightness(.82) saturate(.9);
-  transition:transform .45s var(--ease-lux), border-color .45s var(--ease-lux), box-shadow .45s var(--ease-lux), filter .45s var(--ease-lux);
+  opacity:.78;
+  transition:transform .35s var(--ease-lux), border-color .35s var(--ease-lux), opacity .35s var(--ease-lux);
 }
 .thumb-art{display:block;width:100%;height:100%}
 .thumb svg{width:100%;height:100%;filter:drop-shadow(0 6px 8px rgba(0,0,0,.5))}
@@ -658,9 +678,9 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 .thumb-check{position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;
   background:var(--accent);color:#150b06;opacity:0;transform:scale(.5);transition:opacity .35s var(--ease-lux), transform .45s cubic-bezier(.34,1.5,.5,1)}
 .thumb-check svg{width:9px;height:9px}
-.thumb:hover{transform:translateY(-3px) scale(1.04);border-color:var(--glass-border-strong);filter:brightness(1.08)}
+.thumb:hover{transform:translateY(-3px) scale(1.04);border-color:var(--glass-border-strong);opacity:1}
 .thumb.is-active{
-  transform:scale(1.06);filter:none;
+  transform:scale(1.06);opacity:1;
   border-color:color-mix(in srgb, var(--accent-soft) 85%, transparent);
   box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent), 0 12px 30px -10px color-mix(in srgb, var(--accent) 60%, transparent);
 }
@@ -683,38 +703,28 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   border-radius:26px;padding:18px 18px 20px;overflow:hidden;
   background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.015));
   border:1px solid var(--glass-border);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   box-shadow:0 20px 50px -30px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.06);
-  transition:transform .7s var(--ease-cine), border-color .5s var(--ease-lux), box-shadow .7s var(--ease-lux), opacity .9s var(--ease-lux);
+  transition:transform .6s var(--ease-cine), border-color .4s var(--ease-lux), opacity .8s var(--ease-lux);
 }
 .c-card::before{ /* colour glow */
   content:"";position:absolute;left:50%;top:40%;width:110%;aspect-ratio:1;transform:translate(-50%,-50%) scale(.85);z-index:-1;border-radius:50%;
   background:radial-gradient(circle, color-mix(in srgb, var(--j-mid) 45%, transparent) 0%, transparent 62%);
-  opacity:.35;filter:blur(10px);
-  transition:opacity .7s var(--ease-lux), transform .9s var(--ease-cine);
+  opacity:.35;will-change:opacity;
+  transition:opacity .6s var(--ease-lux), transform .8s var(--ease-cine);
 }
 .c-top{display:flex;justify-content:space-between;align-items:center;min-height:22px;font-size:10px;font-weight:600;letter-spacing:.22em;color:var(--text-muted)}
 .c-now{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;color:#150b06;background:var(--accent);opacity:0;transform:translateY(-4px);transition:opacity .4s, transform .5s var(--ease-lux)}
 .c-now svg{width:9px;height:9px}
-.c-visual{display:block;width:74%;margin:10px auto 6px;transition:transform .9s var(--ease-cine)}
-.c-visual svg{width:100%;height:auto;filter:drop-shadow(0 18px 18px rgba(0,0,0,.55))}
+.c-visual{display:block;width:74%;aspect-ratio:500/560;margin:10px auto 6px;transition:transform .8s var(--ease-cine)}
+.c-visual svg{width:100%;height:auto}
 .c-shadow{display:block;width:52%;height:12px;margin:0 auto 16px;border-radius:50%;background:radial-gradient(ellipse, rgba(0,0,0,.55), transparent 70%);transition:transform .9s var(--ease-cine), opacity .9s}
 .c-name{font-family:var(--font-display);font-size:26px;line-height:1.05}
-.c-meta{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:10px}
-.c-price{font-size:14px;font-weight:600;letter-spacing:.06em}
-.c-price s{font-weight:400;color:var(--text-muted);margin-left:6px;font-size:12px}
-.c-view{display:inline-flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.2em;border:1px solid var(--glass-border-strong);transition:background-color .4s, color .4s, border-color .4s}
-.c-view i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#f7f1ea;color:#150b06;transition:background-color .4s, color .4s}
-.c-view svg{width:11px;height:11px;transition:transform .5s var(--ease-lux)}
 
-.c-card:hover,.c-card:focus-visible{border-color:rgba(255,255,255,.3);box-shadow:0 30px 60px -30px rgba(0,0,0,.95), 0 0 40px -12px color-mix(in srgb, var(--j-mid) 55%, transparent), inset 0 1px 0 rgba(255,255,255,.1)}
+.c-card:hover,.c-card:focus-visible{border-color:rgba(255,255,255,.3)}
 .c-card:hover::before,.c-card:focus-visible::before{opacity:.8;transform:translate(-50%,-50%) scale(1)}
 .c-card:hover .c-visual,.c-card:focus-visible .c-visual{transform:scale(1.07) translateY(-4px)}
 .c-card:hover .c-shadow{transform:scale(.86);opacity:.7}
-.c-card:hover .c-view{background:#f7f1ea;color:#150b06;border-color:#f7f1ea}
-.c-card:hover .c-view i{background:#150b06;color:#f7f1ea}
-.c-card:hover .c-view svg{transform:translateX(2px)}
-.c-card.is-current{border-color:color-mix(in srgb, var(--accent-soft) 55%, transparent)}
+.c-card:hover .c-card:hover .c-card:hover .c-card.is-current{border-color:color-mix(in srgb, var(--accent-soft) 55%, transparent)}
 .c-card.is-current .c-now{opacity:1;transform:none}
 
 /* rise on hover + scroll reveal (IntersectionObserver) */
@@ -741,13 +751,13 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   background:
     radial-gradient(ellipse 70% 58% at 50% 44%, color-mix(in srgb, var(--glow-core) 34%, transparent), transparent 70%),
     linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  transition:--glow-core .95s var(--ease-lux)}
 .dv-word{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);font-family:var(--font-display);font-style:italic;font-size:clamp(120px,14vw,240px);line-height:1;
   color:transparent;-webkit-text-stroke:1px color-mix(in srgb, var(--accent-soft) 16%, transparent);pointer-events:none}
-.dv-art{position:relative;width:74%;transition:opacity .45s var(--ease-lux), transform .7s var(--ease-cine)}
-.dv-art .jk{filter:drop-shadow(0 30px 30px rgba(0,0,0,.55)) drop-shadow(4px -2px 10px color-mix(in srgb, var(--rim-light) 22%, transparent))}
+.dv-art{position:relative;width:74%;aspect-ratio:500/560;transition:opacity .45s var(--ease-lux), transform .7s var(--ease-cine)}
 .dv-art.is-switching{opacity:0;transform:translateY(10px) scale(.96)}
-.dv-shadow{position:absolute;left:24%;right:24%;bottom:8%;height:22px;border-radius:50%;background:radial-gradient(ellipse, color-mix(in srgb, var(--shadow-color) 90%, transparent), transparent 70%);filter:blur(5px)}
+.dv-shadow{position:absolute;left:24%;right:24%;bottom:8%;height:22px;border-radius:50%;background:radial-gradient(ellipse, color-mix(in srgb, var(--shadow-color) 90%, transparent), transparent 70%);transition:var(--tt)}
 .dv-tag{position:absolute;left:18px;bottom:16px;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--text-muted)}
 .details-info{display:flex;flex-direction:column;gap:24px}
 .d-collection{font-size:11px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--text-muted)}
@@ -808,16 +818,15 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 /* ABOUT */
 .about{overflow:hidden}
 .about::before{content:"";position:absolute;left:-10%;top:10%;width:60%;aspect-ratio:1;border-radius:50%;pointer-events:none;z-index:-1;
-  background:radial-gradient(circle, color-mix(in srgb, var(--glow-core) 22%, transparent), transparent 65%);filter:blur(10px)}
+  background:radial-gradient(circle, color-mix(in srgb, var(--glow-core) 22%, transparent), transparent 65%);transition:var(--tt)}
 .about-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:clamp(28px,5vw,80px);align-items:end}
 .about-title{font-family:var(--font-display);font-weight:400;font-size:clamp(56px,8.4vw,150px);line-height:.86;letter-spacing:-.03em;text-transform:uppercase;margin-top:16px}
-.about-title em{font-style:italic;text-transform:none;background:linear-gradient(100deg,#fff3e2, var(--accent-soft) 60%, var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent;padding-right:.06em}
+.about-title em{font-style:italic;text-transform:none;background:linear-gradient(100deg,#fff3e2, var(--accent-soft) 60%, var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent;padding-right:.06em;transition:var(--tt)}
 .about-copy p{font-size:16px;font-weight:300;line-height:1.8;color:var(--text-secondary);max-width:46ch}
 .about-copy p + p{margin-top:14px}
 .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:clamp(40px,7vh,72px)}
 .pillar{position:relative;padding:26px 24px 28px;border-radius:24px;border:1px solid var(--glass-border);
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.012));
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.012));box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
 .pillar b{font-family:var(--font-display);font-style:italic;font-size:40px;font-weight:400;color:var(--accent-soft);line-height:1}
 .pillar h3{font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;margin:18px 0 8px}
 .pillar p{font-size:14px;line-height:1.65;color:var(--text-secondary)}
@@ -825,14 +834,15 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 /* CONTACT */
 .contact-grid{display:grid;grid-template-columns:1fr 1.05fr;gap:clamp(28px,5vw,80px);align-items:start}
 .contact-list{margin-top:36px;border-top:1px solid var(--glass-border)}
-.contact-list a{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:64px;padding:14px 0;border-bottom:1px solid var(--glass-border);transition:padding .45s var(--ease-cine), color .3s}
-.contact-list a:hover{padding-left:10px;color:var(--accent-soft)}
+.contact-list a{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:64px;padding:14px 0;border-bottom:1px solid var(--glass-border);transition:color .3s}
+.contact-list a > span:first-child{transition:transform .45s var(--ease-cine)}
+.contact-list a:hover{color:var(--accent-soft)}
+.contact-list a:hover > span:first-child{transform:translateX(10px)}
 .contact-list small{display:block;font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--text-muted);margin-bottom:3px}
 .contact-list span:last-child{display:flex;align-items:center;gap:10px}
 .contact-list svg{width:18px;height:18px}
 .contact-form{position:relative;display:grid;gap:16px;padding:clamp(24px,3vw,36px);border-radius:28px;border:1px solid var(--glass-border);
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.015));
-  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 30px 60px -30px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.07)}
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.015));box-shadow:0 30px 60px -30px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.07)}
 .contact-form h3{font-family:var(--font-display);font-size:30px;font-weight:400}
 .contact-form .btn-solid{margin-top:4px}
 .form-done{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:30px 10px;animation:fadeUp .6s var(--ease-cine)}
@@ -930,9 +940,10 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 }
 @media (max-width:680px){
   .page{padding:10px 0}
-  .showroom{width:calc(100vw - 20px);border-radius:28px;
+  .showroom{width:calc(100vw - 20px);border-radius:28px}
+  .tint{background:radial-gradient(ellipse 90% 340px at 50% 330px, color-mix(in srgb, var(--glow-core) 30%, transparent) 0%, color-mix(in srgb, var(--glow-mid) 12%, transparent) 45%, transparent 75%)}
+  .showroom::after{
     background:
-      radial-gradient(ellipse 90% 340px at 50% 330px, color-mix(in srgb, var(--glow-core) 30%, transparent) 0%, color-mix(in srgb, var(--glow-mid) 12%, transparent) 45%, transparent 75%),
       linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 62%, transparent) 0%, color-mix(in srgb, var(--bg-3) 80%, transparent) 100%)}
   .nav{position:relative;top:0;padding:8px 6px 0}
   .nav-bar{padding:12px 10px;gap:14px}
@@ -960,9 +971,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   .collection-grid{gap:10px}
   .c-card{padding:12px 12px 14px;border-radius:20px}
   .c-name{font-size:20px}
-  .c-meta{flex-direction:column;align-items:flex-start}
-  .c-view{padding:6px 6px 6px 12px}
-}
+  }
 @media (max-width:1180px){
   .details{grid-template-columns:1fr 1fr}
   .accordion{grid-column:1 / -1}
@@ -1035,16 +1044,31 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   .toasts{bottom:14px}
   .toast{white-space:normal}
 }
+/* ---- phones & small tablets: lighter effects, same look ---- */
+@media (max-width:767px){
+  .glass-panel,.btn-glass,.toast{backdrop-filter:none;-webkit-backdrop-filter:none}
+  .glass-panel{background:linear-gradient(180deg, color-mix(in srgb, var(--bg-1) 97%, #000), color-mix(in srgb, var(--bg-3) 99%, #000))}
+  .reflection,.hotspot,.stage-flare,.c-card::before{display:none}
+  .thumb svg,.thumb-box .jk{filter:none}
+  .showroom{box-shadow:0 20px 60px -24px rgba(0,0,0,.8)}
+  .stage-glow{animation:none}
+}
 @media (prefers-reduced-motion:reduce){
   .success > *,.success-mark{opacity:1!important}
   .success-mark circle,.success-mark path{stroke-dashoffset:0!important}
   .mobile-menu{clip-path:none!important}
   .mm-link{opacity:1!important;transform:none!important}
 }
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation:none!important;transition-duration:.12s!important}
-  .particles{display:none}
-  :root{--scene-dur:.2s}
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .particles{display:none}
 }
 
 /* ==========================================================
@@ -1060,8 +1084,8 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   50%    {transform:translateY(10px);opacity:.07}
 }
 @keyframes shadowFloat{ /* smaller, lighter, softer when high; larger, darker when low */
-  0%,100%{transform:scaleX(1);opacity:1;filter:blur(6px)}
-  50%    {transform:scaleX(.8);opacity:.62;filter:blur(10px)}
+  0%,100%{transform:scaleX(1);opacity:1}
+  50%    {transform:scaleX(.8) scaleY(.9);opacity:.6}
 }
 @keyframes glowBreath{
   0%,100%{opacity:.9;transform:translate(-50%,-50%) scale(1)}
@@ -1089,7 +1113,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   100%{opacity:1;transform:none}
 }
 @keyframes inNav{from{opacity:0;transform:translate3d(0,-12px,0)}}
-.intro .scene                     {animation:inFade .6s ease-out both}
+.intro .scene-wrap                {animation:inFade .6s ease-out both}
 .intro .showroom                  {animation:inFade .7s ease-out .05s both}
 .intro .layer-glow                {animation:inFade .9s ease-out .2s both}
 .intro .particles                 {animation:inFade 1.2s ease-out .5s both}
@@ -1102,7 +1126,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 </head>
 
 <body>
-<div class="scene" id="scene" aria-hidden="true"></div>
+<div class="scene-wrap" id="scene" aria-hidden="true"><div class="scene is-front"></div><div class="scene"></div></div>
 
 <!-- Reusable inline SVG icons -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -1118,11 +1142,12 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
 
 <div class="page">
   <main class="showroom" id="showroom">
+    <div class="tint-wrap" aria-hidden="true"><div class="tint is-front"></div><div class="tint"></div></div>
 
     <!-- NAVIGATION -->
     <header class="nav" id="nav">
       <div class="nav-bar">
-        <a href="#" class="logo" aria-label="Jacket Masters home">
+        <a href="#hero" class="logo" data-nav="top" aria-label="Jacket Masters home">
           <span class="logo-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M12 2l3.5 6.5L12 22 8.5 8.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
           </span>
@@ -1137,7 +1162,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
         </nav>
 
         <div class="nav-actions">
-          <button class="icon-btn" type="button" aria-label="Search">
+          <button class="icon-btn" type="button" id="searchBtn" aria-label="Search products" aria-haspopup="dialog" aria-expanded="false" aria-controls="searchModal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
           </button>
           <button class="icon-btn" type="button" id="cartBtn" aria-label="Open shopping bag, 0 items" aria-haspopup="dialog" aria-expanded="false" aria-controls="cartDrawer">
@@ -1177,11 +1202,11 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
         </div>
 
         <ul class="socials" aria-label="Social media" data-in style="--d:1.25s">
-          <li><a href="#" aria-label="Instagram">
+          <li><a href="#" data-demo="Instagram" aria-label="Instagram">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r=".9" fill="currentColor" stroke="none"/></svg>Instagram</a></li>
-          <li><a href="#" aria-label="TikTok">
+          <li><a href="#" data-demo="TikTok" aria-label="TikTok">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M14 3.5v11.2a3.8 3.8 0 1 1-3.8-3.8"/><path d="M14 3.5c.4 2.6 2.2 4.4 5 4.6"/></svg>TikTok</a></li>
-          <li><a href="#" aria-label="Facebook">
+          <li><a href="#" data-demo="Facebook" aria-label="Facebook">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M14.5 21v-8h2.7l.4-3.2h-3.1V7.9c0-.9.3-1.6 1.6-1.6h1.7V3.5c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.2H8.4V13h2.8v8"/></svg>Facebook</a></li>
         </ul>
       </div>
@@ -1200,7 +1225,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
           </div>
           <div class="layer floor" aria-hidden="true">
             <div class="floor-light"></div>
-            <div class="reflection"><div class="reflection-swap jacket-host" id="reflection"></div></div>
+            <div class="reflection"><div class="reflection-swap" id="reflection"></div></div>
             <div class="floor-shadow-wrap"><div class="floor-shadow"></div></div>
           </div>
 
@@ -1209,7 +1234,7 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
             <div class="product-intro">
               <div class="product-hover">
                 <div class="product-float">
-                  <div class="product-swap jacket-host" id="productArt"></div>
+                  <div class="product-swap" id="productArt"></div>
                 </div>
               </div>
             </div>
@@ -1502,6 +1527,20 @@ textarea.field-input{resize:vertical;min-height:130px;line-height:1.55}
   </div>
 </div>
 
+<!-- SEARCH -->
+<div class="ui-layer modal modal--sm" id="searchModal" role="dialog" aria-modal="true" aria-labelledby="searchTitle" hidden>
+  <div class="modal-card glass-panel">
+    <button class="close-btn modal-close" type="button" data-close aria-label="Close search"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+    <div class="sp">
+      <div><p class="eyebrow">Search</p><h2 class="sp-title" id="searchTitle" style="margin-top:8px">Find your jacket</h2></div>
+      <label class="sr-only" for="searchInput">Search products</label>
+      <input class="field-input" id="searchInput" type="search" placeholder="Try “black” or “crimson”" autocomplete="off" spellcheck="false" data-autofocus aria-controls="searchResults">
+      <ul class="search-results" id="searchResults" aria-label="Matching products"></ul>
+      <p class="search-empty" id="searchEmpty" role="status" hidden></p>
+    </div>
+  </div>
+</div>
+
 <!-- MOBILE MENU -->
 <div class="ui-layer mobile-menu" id="mobileMenu" role="dialog" aria-modal="true" aria-label="Site menu" hidden>
   <div class="mm-head">
@@ -1677,8 +1716,8 @@ function buildJacket(uid, detail = 'full'){
       <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" ry="${ry}" fill="url(#${id('form')})"/>
       ${full ? `
       <rect x="${x+.6}" y="${y+.6}" width="${w-1.2}" height="${h-1.2}" rx="${rx}" ry="${ry}" fill="none" stroke="url(#${id('edge')})" stroke-width="1.3"/>
-      <ellipse cx="${x + w*0.42}" cy="${y + h*0.33}" rx="${w*(shoulder?.36:.3)}" ry="${h*(shoulder?.16:.11)}" style="fill:var(--key-light);opacity:calc(var(--j-spec) * ${shoulder?1.5:1})" filter="url(#${id('blur')})"/>
-      <ellipse cx="${x + w*0.55}" cy="${y + h*0.8}" rx="${w*0.26}" ry="${h*0.05}" style="fill:var(--rim-light);opacity:calc(var(--j-spec) * .45)" filter="url(#${id('blur')})"/>` : ''}
+      <ellipse cx="${x + w*0.42}" cy="${y + h*0.33}" rx="${w*(shoulder?.42:.36)}" ry="${h*(shoulder?.22:.17)}" fill="url(#${id('spec')})" style="opacity:calc(var(--j-spec) * ${shoulder?1.5:1})"/>
+      <ellipse cx="${x + w*0.55}" cy="${y + h*0.8}" rx="${w*0.31}" ry="${h*0.09}" fill="url(#${id('bounce')})" style="opacity:calc(var(--j-spec) * .45)"/>` : ''}
     </g>`;
   };
 
@@ -1771,9 +1810,11 @@ function buildJacket(uid, detail = 'full'){
     </linearGradient>
     ${full ? `
     <clipPath id="${id('body')}">${clip.join('')}</clipPath>
+    <radialGradient id="${id('halo')}"><stop offset=".55" stop-color="#000" stop-opacity=".5"/><stop offset=".8" stop-color="#000" stop-opacity=".2"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <radialGradient id="${id('rimHalo')}"><stop offset=".72" style="stop-color:var(--rim-light)" stop-opacity=".34"/><stop offset=".86" style="stop-color:var(--rim-light)" stop-opacity=".1"/><stop offset="1" style="stop-color:var(--rim-light)" stop-opacity="0"/></radialGradient>
     <radialGradient id="${id('key')}" gradientUnits="userSpaceOnUse" cx="185" cy="140" r="300">
-      <stop offset="0" style="stop-color:var(--key-light)" stop-opacity=".34"/>
-      <stop offset=".45" style="stop-color:var(--key-light)" stop-opacity=".08"/>
+      <stop offset="0" style="stop-color:var(--key-light)" stop-opacity=".26"/>
+      <stop offset=".45" style="stop-color:var(--key-light)" stop-opacity=".06"/>
       <stop offset="1" style="stop-color:var(--key-light)" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="${id('rim')}" gradientUnits="userSpaceOnUse" x1="330" y1="0" x2="440" y2="0">
@@ -1783,12 +1824,15 @@ function buildJacket(uid, detail = 'full'){
     <linearGradient id="${id('ground')}" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="510">
       <stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".32"/>
     </linearGradient>` : ''}
-    <filter id="${id('blur')}" x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="3.2"/></filter>
+    <radialGradient id="${id('spec')}"><stop offset="0" style="stop-color:var(--key-light)" stop-opacity=".95"/><stop offset=".5" style="stop-color:var(--key-light)" stop-opacity=".4"/><stop offset="1" style="stop-color:var(--key-light)" stop-opacity="0"/></radialGradient>
+    <radialGradient id="${id('bounce')}"><stop offset="0" style="stop-color:var(--rim-light)" stop-opacity=".9"/><stop offset="1" style="stop-color:var(--rim-light)" stop-opacity="0"/></radialGradient>
     <filter id="${id('lift')}" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity=".55"/>
     </filter>
   </defs>
 
+  ${full ? `<ellipse cx="250" cy="330" rx="215" ry="235" fill="url(#${id('halo')})"/>
+  <ellipse cx="278" cy="262" rx="196" ry="236" fill="url(#${id('rimHalo')})"/>` : ''}
   <g class="jk-sleeves">${sleeves}</g>
 
   <g class="jk-torso" ${full ? `filter="url(#${id('lift')})"` : ''}>
@@ -1817,8 +1861,8 @@ function buildJacket(uid, detail = 'full'){
   ${full ? `
   <!-- global light pass, clipped to the silhouette -->
   <g clip-path="url(#${id('body')})">
-    <rect x="40" y="30" width="420" height="490" fill="url(#${id('key')})" style="mix-blend-mode:screen"/>
-    <rect x="40" y="30" width="420" height="490" fill="url(#${id('rim')})" style="mix-blend-mode:screen"/>
+    <rect x="40" y="30" width="420" height="490" fill="url(#${id('key')})"/>
+    <rect x="40" y="30" width="420" height="490" fill="url(#${id('rim')})"/>
     <rect x="40" y="30" width="420" height="490" fill="url(#${id('ground')})"/>
   </g>` : ''}
 
@@ -1862,6 +1906,8 @@ const discount = p => `−${Math.round((1 - p.price / p.oldPrice) * 100)}%`;
 const wrap = (i, n) => ((i % n) + n) % n;
 const reflow = el => void el.offsetWidth;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const _ui = {};
+const ui = id => _ui[id] || (_ui[id] = document.getElementById(id));   // PERF: each static element is looked up once
 
 function swapText(el, html){
   if (el.innerHTML === html) return;
@@ -1874,7 +1920,7 @@ function swapText(el, html){
     el.classList.add('swap-in');
     reflow(el);
     el.classList.remove('swap-in');
-  }, 280);
+  }, 220);
 }
 
 /* ==========================================================
@@ -1941,7 +1987,7 @@ $('#emptyArt').innerHTML = jacketHTML('empty', PRODUCTS[1], 'lite');
 /* ambient particles — small fixed set, CSS-animated (no JS loop) */
 (function buildParticles(){
   if (mq.reduce.matches) return;
-  const count = mq.mobile.matches ? 8 : 22;
+  const count = matchMedia('(max-width: 767px)').matches ? 6 : 22;
   const frag = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
     const s = document.createElement('span');
@@ -1960,30 +2006,54 @@ $('#emptyArt').innerHTML = jacketHTML('empty', PRODUCTS[1], 'lite');
    ========================================================== */
 let switchToken = 0;
 
-function applyTheme(p){
-  for (const [key, cssVar] of Object.entries(THEME_VARS)) root.style.setProperty(cssVar, p.theme[key]);
+const fadePairs = [$$('#scene .scene'), $$('.tint')];
+let fadeFront = 0, fadeTimer = 0;
+function paintThemeLayer(el, t){
+  el.style.setProperty('--glow-core', t.glowCore); el.style.setProperty('--glow-mid', t.glowMid);
+  el.style.setProperty('--glow-edge', t.glowEdge); el.style.setProperty('--bg-1', t.bg1);
+  el.style.setProperty('--bg-2', t.bg2);           el.style.setProperty('--bg-3', t.bg3);
 }
+function crossfadeScene(p, instant){
+  const next = instant ? fadeFront : 1 - fadeFront, prev = fadeFront;
+  fadePairs.forEach(pair => {
+    const inc = pair[next], out = pair[prev];
+    paintThemeLayer(inc, p.theme);
+    if (instant) return;
+    out.classList.remove('is-front'); out.classList.add('is-back');       // old light stays underneath…
+    inc.classList.remove('is-back', 'is-front'); reflow(inc);
+    inc.classList.add('is-front');                                        // …while the new one fades in (opacity only)
+  });
+  fadeFront = next;
+  clearTimeout(fadeTimer);
+  if (!instant) fadeTimer = setTimeout(() => fadePairs.forEach(pair => pair[prev].classList.remove('is-back')), 1000);
+}
+function applyTheme(p, instant){
+  for (const [key, cssVar] of Object.entries(THEME_VARS)) root.style.setProperty(cssVar, p.theme[key]);
+  crossfadeScene(p, instant);
+}
+
+const thumbEls = $$('.thumb'), cardEls = $$('.c-card');
 
 function updateUI(p, i, animate){
   const set = animate ? swapText : (el, html) => { el.innerHTML = html; };
-  set($('#productName'), p.shortName);
-  set($('#price'), `<sup>$</sup>${p.price}`);
-  set($('#priceOld'), money(p.oldPrice));
-  set($('#priceTag'), discount(p));
-  set($('#captionNo'), `N°${pad2(i + 1)}`);
-  set($('#captionName'), p.shortName);
-  set($('#slideNow'), pad2(i + 1));
-  $('#colorName').textContent = p.colorName;
-  $('#slideBar').style.setProperty('--progress', (i + 1) / PRODUCTS.length);
+  set(ui('productName'), p.shortName);
+  set(ui('price'), `<sup>$</sup>${p.price}`);
+  set(ui('priceOld'), money(p.oldPrice));
+  set(ui('priceTag'), discount(p));
+  set(ui('captionNo'), `N°${pad2(i + 1)}`);
+  set(ui('captionName'), p.shortName);
+  set(ui('slideNow'), pad2(i + 1));
+  ui('colorName').textContent = p.colorName;
+  ui('slideBar').style.setProperty('--progress', (i + 1) / PRODUCTS.length);
   document.title = `Jacket Masters — ${p.name}`;
 
-  $$('.thumb').forEach((t, ti) => {
+  thumbEls.forEach((t, ti) => {
     const on = ti === i;
     t.classList.toggle('is-active', on);
     t.setAttribute('aria-checked', on);
     t.tabIndex = on ? 0 : -1;
   });
-  $$('.c-card').forEach((c, ci) => {
+  cardEls.forEach((c, ci) => {
     c.classList.toggle('is-current', ci === i);
     if (ci === i) c.setAttribute('aria-current', 'true'); else c.removeAttribute('aria-current');
   });
@@ -2015,8 +2085,8 @@ function selectProduct(nextIndex, dir){
     stage.classList.add('product-enter');
     reflow(productArt);
     stage.classList.remove('product-enter');
-    setTimeout(() => { if (token === switchToken) stage.classList.remove('product-changing'); }, 560);
-  }, mq.reduce.matches ? 60 : 420);
+    setTimeout(() => { if (token === switchToken) stage.classList.remove('product-changing'); }, 520);
+  }, mq.reduce.matches ? 20 : 340);
 }
 
 const nextProduct = () => selectProduct(state.index + 1, 1);
@@ -2024,7 +2094,7 @@ const prevProduct = () => selectProduct(state.index - 1, -1);
 
 (function init(){
   const p = PRODUCTS[state.index];
-  applyTheme(p);
+  applyTheme(p, true);
   paintJacket(productArt, p.visual);
   paintJacket(reflection, p.visual);
   updateUI(p, state.index, false);
@@ -2079,10 +2149,6 @@ function selectSize(size, byUser){
   store.set('size', size);
   syncSizes();
 }
-document.addEventListener('click', e => {
-  const b = e.target.closest('.sizes[data-sizes] .size-btn');
-  if (b) selectSize(b.dataset.size, true);
-});
 document.addEventListener('keydown', e => {          // arrow keys move within a size group
   const b = e.target.closest && e.target.closest('.sizes[data-sizes] .size-btn');
   if (!b || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
@@ -2099,6 +2165,7 @@ if (document.fonts) document.fonts.ready.then(moveSizeIndicators);
    KEYBOARD NAVIGATION
    ========================================================== */
 document.addEventListener('keydown', e => {
+  if (e.key === 'Tab' && layers.length) { trapFocus(e); return; }
   if (e.key === 'Escape' && layers.length) { e.preventDefault(); closeTop(); return; }
   if (layers.length) return;                        // product shortcuts pause while an overlay is open
   const t = e.target;
@@ -2125,6 +2192,7 @@ const loop = {
   heroH:1
 };
 const cursorDot = $('#cursorDot'), cursorRing = $('#cursorRing');
+const heroLeft = $('.hero-left'), heroRight = $('.hero-right');
 
 /* depth layers: [element, translateX px, translateY px, rotateY deg, rotateX deg]
    background ≈ ±1°, glow ≈ ±2°, jacket ±4°, foreground moves opposite */
@@ -2175,11 +2243,18 @@ function frame(){
   if (loop.scrollDirty) {
     loop.scrollDirty = false;
     const y = window.scrollY;
-    const sp = mq.reduce.matches ? 0 : clamp(y / (loop.heroH * 0.85), 0, 1);
-    loop.sp = sp;
-    hero.style.setProperty('--sp', sp.toFixed(4));
-    applyScene();
-    nav.classList.toggle('is-scrolled', y > 24);
+    const sp = mq.reduce.matches ? 0 : Math.round(clamp(y / (loop.heroH * 0.85), 0, 1) * 1000) / 1000;
+    if (sp !== loop.sp) {                                   // DOM is touched only when the value changes
+      loop.sp = sp;
+      stage.style.transform = sp ? `translate3d(0,${(sp * 36).toFixed(1)}px,0) scale(${(1 - sp * .1).toFixed(4)})` : '';
+      const o = sp ? (1 - sp * .75).toFixed(3) : '', tr = sp ? `translate3d(0,${(sp * -28).toFixed(1)}px,0)` : '';
+      heroLeft.style.opacity = o;  heroLeft.style.transform = tr;
+      heroRight.style.opacity = o; heroRight.style.transform = tr;
+      applyScene();
+    }
+    const scrolled = y > 24;
+    if (scrolled !== loop.scrolled) { loop.scrolled = scrolled; nav.classList.toggle('is-scrolled', scrolled); }
+    loop.rectDirty = true;
   }
 
   if (moving) kick();
@@ -2188,7 +2263,8 @@ function frame(){
 /* parallax input */
 function onHeroMove(e){
   if (e.pointerType !== 'mouse') return;
-  const r = hero.getBoundingClientRect();
+  if (loop.rectDirty || !loop.rect) { loop.rect = hero.getBoundingClientRect(); loop.rectDirty = false; }   // no layout read per event
+  const r = loop.rect;
   const k = motionScale();
   loop.par.tx = clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1) * k;
   loop.par.ty = clamp(((e.clientY - r.top) / r.height) * 2 - 1, -1, 1) * k;
@@ -2199,7 +2275,8 @@ let parallaxOn = false;
 function setParallax(on){
   if (on === parallaxOn) return;
   parallaxOn = on;
-  if (on) { hero.addEventListener('pointermove', onHeroMove); hero.addEventListener('pointerleave', onHeroLeave); }
+  root.classList.toggle('parallax-on', on);
+  if (on) { hero.addEventListener('pointermove', onHeroMove, { passive:true }); hero.addEventListener('pointerleave', onHeroLeave); }
   else    { hero.removeEventListener('pointermove', onHeroMove); hero.removeEventListener('pointerleave', onHeroLeave); onHeroLeave(); }
 }
 
@@ -2215,9 +2292,12 @@ function onCursorMove(e){
   if (!c.on) { c.on = true; c.x = e.clientX; c.y = e.clientY; root.classList.add('has-cursor'); }
   c.tx = e.clientX; c.ty = e.clientY;
   const t = e.target;
-  const onProduct = !!(t.closest && t.closest('#productHit'));
-  cursorRing.classList.toggle('is-product', onProduct);
-  cursorRing.classList.toggle('is-link', !onProduct && !!(t.closest && t.closest(INTERACTIVE)));
+  if (t !== c.el) {                                         // only re-check hover state when the target changes
+    c.el = t;
+    const onProduct = !!(t.closest && t.closest('#productHit'));
+    cursorRing.classList.toggle('is-product', onProduct);
+    cursorRing.classList.toggle('is-link', !onProduct && !!(t.closest && t.closest(INTERACTIVE)));
+  }
   kick();
 }
 const onCursorOut  = e => { if (!e.relatedTarget) { loop.cur.on = false; root.classList.remove('has-cursor'); } };
@@ -2236,9 +2316,10 @@ function setCursor(on){
 }
 
 /* scroll + resize */
-function measure(){ loop.heroH = hero.offsetHeight || 1; loop.scrollDirty = true; moveSizeIndicators(); kick(); }
+function measure(){ loop.heroH = hero.offsetHeight || 1; loop.rectDirty = true; loop.scrollDirty = true; moveSizeIndicators(); kick(); }
 window.addEventListener('scroll', () => { loop.scrollDirty = true; kick(); }, { passive:true });
-window.addEventListener('resize', measure);
+let resizeT;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(measure, 120); }, { passive:true });
 
 /* react to environment changes (rotating a tablet, toggling reduced motion…) */
 function applyEnvironment(){ setParallax(allowParallax()); setCursor(allowCursor()); measure(); }
@@ -2269,26 +2350,26 @@ applyEnvironment();
 function renderDetails(p, animate){
   const i = PRODUCTS.indexOf(p);
   const set = animate ? swapText : (el, html) => { el.innerHTML = html; };
-  set($('#dName'), p.name);
-  set($('#dPrice'), money(p.price));
-  set($('#dOld'), money(p.oldPrice));
-  $('#dNo').textContent = `N°${pad2(i + 1)}`;
-  $('#dCollection').textContent = `${p.collection} Collection`;
-  $('#dDesc').textContent = p.description;
-  $('#dColor').textContent = p.colorName;
-  $('#dTag').textContent = p.colorName;
-  $('#dMaterial').textContent = p.material;
-  $('#dFit').textContent = p.fit;
-  $('#dCare').textContent = p.care;
-  $('#dColl').textContent = p.collection;
-  $('#dRating').textContent = `${p.rating.toFixed(1)} / 5`;
-  $('#dStars').style.setProperty('--r', p.rating / 5);
-  $('#accDetails').innerHTML = `<p>${p.description}</p><ul>${p.details.map(d => `<li>${d}</li>`).join('')}<li>${p.fit}</li></ul>`;
-  $('#accMaterial').innerHTML = `<ul>${p.materialNotes.map(d => `<li>${d}</li>`).join('')}</ul>`;
-  $('#accCare').innerHTML = `<ul>${p.careNotes.map(d => `<li>${d}</li>`).join('')}</ul>`;
+  set(ui('dName'), p.name);
+  set(ui('dPrice'), money(p.price));
+  set(ui('dOld'), money(p.oldPrice));
+  ui('dNo').textContent = `N°${pad2(i + 1)}`;
+  ui('dCollection').textContent = `${p.collection} Collection`;
+  ui('dDesc').textContent = p.description;
+  ui('dColor').textContent = p.colorName;
+  ui('dTag').textContent = p.colorName;
+  ui('dMaterial').textContent = p.material;
+  ui('dFit').textContent = p.fit;
+  ui('dCare').textContent = p.care;
+  ui('dColl').textContent = p.collection;
+  ui('dRating').textContent = `${p.rating.toFixed(1)} / 5`;
+  ui('dStars').style.setProperty('--r', p.rating / 5);
+  ui('accDetails').innerHTML = `<p>${p.description}</p><ul>${p.details.map(d => `<li>${d}</li>`).join('')}<li>${p.fit}</li></ul>`;
+  ui('accMaterial').innerHTML = `<ul>${p.materialNotes.map(d => `<li>${d}</li>`).join('')}</ul>`;
+  ui('accCare').innerHTML = `<ul>${p.careNotes.map(d => `<li>${d}</li>`).join('')}</ul>`;
   $$('#dSwatches .color-dot').forEach((d, di) => { const on = di === i; d.setAttribute('aria-checked', on); d.tabIndex = on ? 0 : -1; });
 
-  const art = $('#detailArt');
+  const art = ui('detailArt');
   const paint = () => paintJacket($('.jk', art), p.visual);
   if (!animate) { paint(); return; }
   clearTimeout(art._t);
@@ -2308,7 +2389,6 @@ $('#accordion').addEventListener('click', e => {
   const btn = e.target.closest('.acc-btn');
   if (btn) openAccordion(btn.closest('.acc-item').dataset.acc, true);
 });
-$$('[data-acc-open]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); openAccordion(a.dataset.accOpen, false); $('#accordion').scrollIntoView({ behavior:smooth(), block:'center' }); }));
 $('#dSwatches').addEventListener('click', e => { const d = e.target.closest('.color-dot'); if (d) selectProduct(+d.dataset.index); });
 $('#dAdd').addEventListener('click', () => addToCart(PRODUCTS[state.index].id, state.size));
 
@@ -2360,8 +2440,9 @@ function lockScroll(on){
   }
 }
 function syncLayerControls(){
-  $('#cartBtn').setAttribute('aria-expanded', isOpen($('#cartDrawer')));
-  $('#menuBtn').setAttribute('aria-expanded', isOpen($('#mobileMenu')));
+  ui('cartBtn').setAttribute('aria-expanded', isOpen(ui('cartDrawer')));
+  ui('menuBtn').setAttribute('aria-expanded', isOpen(ui('mobileMenu')));
+  ui('searchBtn').setAttribute('aria-expanded', isOpen(ui('searchModal')));
 }
 function openLayer(el, opener){
   if (!el || isOpen(el)) return;
@@ -2394,18 +2475,26 @@ function closeLayer(el, { restoreFocus = true } = {}){
 const closeTop = () => { if (layers.length) closeLayer(layers[layers.length - 1]); };
 
 scrim.addEventListener('click', closeTop);
-document.addEventListener('click', e => {
-  const c = e.target.closest('[data-close]');
-  if (c) closeLayer(c.closest('.ui-layer'));
-});
-// focus trap inside the top layer
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Tab' || !layers.length) return;
+function trapFocus(e){                                        // keep Tab inside the top layer
   const f = focusables(layers[layers.length - 1]);
   if (!f.length) return;
   const first = f[0], last = f[f.length - 1];
   if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
   else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+/* ONE delegated click router for every global action */
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  if (t.closest('a[href="#"]')) e.preventDefault();          // placeholder links never jump
+  let el;
+  if ((el = t.closest('[data-close]')))  { closeLayer(el.closest('.ui-layer')); return; }
+  if ((el = t.closest('[data-wish]')))   { el.classList.remove('pop'); reflow(el); el.classList.add('pop'); toggleWish(wishIdFor(el)); return; }
+  if ((el = t.closest('.sizes[data-sizes] .size-btn'))) { selectSize(el.dataset.size, true); return; }
+  if ((el = t.closest('[data-acc-open]'))) { e.preventDefault(); openAccordion(el.dataset.accOpen, false); ui('accordion').scrollIntoView({ behavior:smooth(), block:'center' }); return; }
+  if ((el = t.closest('[data-nav]')))    { e.preventDefault(); navigate(el.dataset.nav); return; }
+  if ((el = t.closest('[data-demo]')))   { e.preventDefault(); toast(`${el.dataset.demo} — demo link`, 'info'); }
 });
 
 /* ==========================================================
@@ -2416,20 +2505,11 @@ function goTo(target){
   if (!el) window.scrollTo({ top:0, behavior:smooth() });
   else el.scrollIntoView({ behavior:smooth(), block:'start' });
 }
-document.addEventListener('click', e => {
-  const a = e.target.closest('[data-nav]');
-  if (!a) return;
-  e.preventDefault();
-  const menu = $('#mobileMenu');
-  if (isOpen(menu)) { closeLayer(menu, { restoreFocus:false }); setTimeout(() => goTo(a.dataset.nav), 80); }
-  else goTo(a.dataset.nav);
-});
-document.addEventListener('click', e => {
-  const d = e.target.closest('[data-demo]');
-  if (!d) return;
-  e.preventDefault();
-  toast(`${d.dataset.demo} — demo link`, 'info');
-});
+function navigate(target){
+  const menu = ui('mobileMenu');
+  if (isOpen(menu)) { closeLayer(menu, { restoreFocus:false }); setTimeout(() => goTo(target), 80); }
+  else goTo(target);
+}
 (function watchSections(){
   if (!('IntersectionObserver' in window)) return;
   const map = { hero:'top', details:'top', collection:'collection', about:'about', contact:'contact', footer:'contact' };
@@ -2475,12 +2555,6 @@ function toggleWish(id){
   renderWish();
   toast(on ? `Added to wishlist — ${p.shortName}` : `Removed from wishlist`, on ? 'wish' : 'info');
 }
-document.addEventListener('click', e => {
-  const b = e.target.closest('[data-wish]');
-  if (!b) return;
-  b.classList.remove('pop'); reflow(b); b.classList.add('pop');
-  toggleWish(wishIdFor(b));
-});
 
 /* ==========================================================
    CART — one system: lines, quantities, totals, promo, drawer
@@ -2489,7 +2563,7 @@ const cartBtn   = $('#cartBtn');
 const cartCount = $('#cartCount');
 const drawer    = $('#cartDrawer');
 const lineKey   = l => `${l.id}|${l.size}`;
-let renderedKeys = new Set();
+const lineTpl = document.createElement('template');
 
 function saveCart(){ store.set('cart', state.cart.map(({ id, size, qty }) => ({ id, size, qty }))); }
 
@@ -2550,28 +2624,9 @@ function removeLine(key){
   toast(`Removed from bag — ${byId(line.id)?.shortName || 'item'}`, 'info');
 }
 
-function renderCart(){
-  const t = totals();
-  // counter + labels
-  cartCount.textContent = t.count;
-  cartBtn.setAttribute('aria-label', `Open shopping bag, ${t.count} item${t.count === 1 ? '' : 's'}`);
-  $('#cartTitleCount').textContent = `${t.count} item${t.count === 1 ? '' : 's'}`;
-
-  // free-shipping meter
-  const meter = $('#shipMeter');
-  meter.hidden = t.count === 0;
-  $('#shipText').innerHTML = t.subtotal >= FREE_SHIP
-    ? 'You’ve unlocked <b>free shipping</b>.'
-    : `You’re <b>${money(FREE_SHIP - t.subtotal)}</b> away from free shipping.`;
-  $('#shipBar').style.setProperty('--p', Math.min(1, t.subtotal / FREE_SHIP));
-
-  // items (only new lines animate in)
-  const list = $('#cartItems');
-  const nextKeys = new Set(t.lines.map(l => l.key));
-  list.innerHTML = t.lines.map(l => {
-    const safe = l.key.replace(/[^a-z0-9]/gi, '-');
-    return `
-    <li class="cart-item${renderedKeys.has(l.key) ? '' : ' is-new'}" data-key="${l.key}">
+function cartLineHTML(l){
+  const safe = l.key.replace(/[^a-z0-9]/gi, '-');
+  return `<li class="cart-item" data-key="${l.key}">
       <span class="thumb-box" style="${visualVars(l.p)}">${jacketHTML('ci-' + safe, l.p, 'lite')}</span>
       <div class="ci-main">
         <p class="ci-name">${l.p.shortName}</p>
@@ -2579,32 +2634,62 @@ function renderCart(){
         <p class="ci-unit">${money(l.p.price)} each</p>
         <div class="ci-controls">
           <div class="qty" role="group" aria-label="Quantity for ${l.p.shortName}, size ${l.size}">
-            <button type="button" data-act="dec" aria-label="Decrease quantity" ${l.qty <= 1 ? 'disabled' : ''}><svg aria-hidden="true"><use href="#i-minus"/></svg></button>
-            <output aria-live="polite">${l.qty}</output>
-            <button type="button" data-act="inc" aria-label="Increase quantity" ${l.qty >= MAX_QTY ? 'disabled' : ''}><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
+            <button type="button" data-act="dec" aria-label="Decrease quantity"><svg aria-hidden="true"><use href="#i-minus"/></svg></button>
+            <output aria-live="polite"></output>
+            <button type="button" data-act="inc" aria-label="Increase quantity"><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
           </div>
           <button type="button" class="ci-remove" data-act="remove">Remove<span class="sr-only"> ${l.p.shortName}, size ${l.size}</span></button>
         </div>
       </div>
-      <span class="ci-price">${money(l.line)}</span>
+      <span class="ci-price"></span>
     </li>`;
-  }).join('');
-  renderedKeys = nextKeys;
+}
+
+function renderCart(){
+  const t = totals();
+  // counter + labels
+  cartCount.textContent = t.count;
+  cartBtn.setAttribute('aria-label', `Open shopping bag, ${t.count} item${t.count === 1 ? '' : 's'}`);
+  ui('cartTitleCount').textContent = `${t.count} item${t.count === 1 ? '' : 's'}`;
+
+  // free-shipping meter
+  const meter = ui('shipMeter');
+  meter.hidden = t.count === 0;
+  ui('shipText').innerHTML = t.subtotal >= FREE_SHIP
+    ? 'You’ve unlocked <b>free shipping</b>.'
+    : `You’re <b>${money(FREE_SHIP - t.subtotal)}</b> away from free shipping.`;
+  ui('shipBar').style.setProperty('--p', Math.min(1, t.subtotal / FREE_SHIP));
+
+  // items: existing rows are updated in place; only new rows are created (and animate in)
+  const list = ui('cartItems');
+  const existing = new Map([...list.children].map(li => [li.dataset.key, li]));
+  t.lines.forEach((l, idx) => {
+    let li = existing.get(l.key);
+    if (li) existing.delete(l.key);
+    else { lineTpl.innerHTML = cartLineHTML(l); li = lineTpl.content.firstElementChild; li.classList.add('is-new'); }
+    const out = li.querySelector('output');
+    if (out.textContent !== String(l.qty)) out.textContent = l.qty;
+    li.querySelector('.ci-price').textContent = money(l.line);
+    li.querySelector('[data-act="dec"]').disabled = l.qty <= 1;
+    li.querySelector('[data-act="inc"]').disabled = l.qty >= MAX_QTY;
+    if (list.children[idx] !== li) list.insertBefore(li, list.children[idx] || null);
+  });
+  existing.forEach(li => li.remove());
 
   const empty = t.count === 0;
-  $('#cartEmpty').hidden = !empty;
+  ui('cartEmpty').hidden = !empty;
   list.hidden = empty;
-  $('#cartFoot').hidden = empty;
+  ui('cartFoot').hidden = empty;
 
   // promo + summary
-  $('#promoChip').hidden = !t.promo;
-  $('#promoForm').hidden = !!t.promo;
-  if (t.promo) $('#promoCode').textContent = `${t.promo} · ${PROMOS[t.promo].label}`;
-  $('#drawerSummary').innerHTML = summaryHTML(t);
-  $('#checkoutBtn').disabled = empty;
+  ui('promoChip').hidden = !t.promo;
+  ui('promoForm').hidden = !!t.promo;
+  if (t.promo) ui('promoCode').textContent = `${t.promo} · ${PROMOS[t.promo].label}`;
+  ui('drawerSummary').innerHTML = summaryHTML(t);
+  ui('checkoutBtn').disabled = empty;
 
   // keep an open checkout in sync
-  if (!$('#checkout').hidden) renderCheckoutSummary(t);
+  if (!ui('checkout').hidden) renderCheckoutSummary(t);
 }
 
 $('#cartItems').addEventListener('click', e => {
@@ -2617,8 +2702,7 @@ $('#cartItems').addEventListener('click', e => {
   if (act === 'inc') setQty(key, line.qty + 1);
   if (act === 'dec') setQty(key, line.qty - 1);
   if (act === 'remove') { removeLine(key); (focusables(drawer).find(n => n.closest('.cart-item')) || $('#exploreBtn:not([hidden])') || drawer.querySelector('[data-close]')).focus(); return; }
-  const again = $(`.cart-item[data-key="${CSS.escape(key)}"] button[data-act="${act}"]`);
-  (again && !again.disabled ? again : $(`.cart-item[data-key="${CSS.escape(key)}"] .ci-remove`))?.focus();
+  if (btn.disabled) btn.closest('.qty').querySelector('button:not([disabled])')?.focus();   // rows persist, so focus stays put
 });
 
 /* promo codes (frontend demo) */
@@ -2685,65 +2769,88 @@ $('#collectionGrid').addEventListener('click', e => {
 /* ==========================================================
    QUICK VIEW — one modal, rendered from product data
    ========================================================== */
-const quickView = $('#quickView');
-function renderQuickView(focusSel){
-  const p = PRODUCTS[qvState.index];
-  if (!p) return;
-  quickView.style.cssText = visualVars(p);
-  $('#qvBody').innerHTML = `
-    <div class="qv-visual">${jacketHTML('qv', p, 'full')}</div>
+const quickView = ui('quickView');
+let qvFields = null;
+function buildQuickView(){
+  if (qvFields) return;
+  ui('qvBody').innerHTML = `
+    <div class="qv-visual"><span class="jk">${buildJacket('qv', 'full')}</span></div>
     <div class="qv-info">
-      <div class="name-row">
-        <div><p class="eyebrow">${p.collection} · N°${pad2(qvState.index + 1)}</p><h2 class="qv-name" id="qvTitle" style="margin-top:10px">${p.name}</h2></div>
-      </div>
-      <div class="rating"><span class="stars" style="--r:${p.rating / 5}" aria-hidden="true">★★★★★</span><b>${p.rating.toFixed(1)} / 5</b><small>Sample rating · demo store</small></div>
-      <p class="qv-price">${money(p.price)} <s><span class="sr-only">was </span>${money(p.oldPrice)}</s></p>
-      <p class="qv-desc">${p.description}</p>
+      <div><p class="eyebrow" data-qv="eyebrow"></p><h2 class="qv-name" id="qvTitle" data-qv="name" style="margin-top:10px"></h2></div>
+      <div class="rating"><span class="stars" data-qv="stars" aria-hidden="true">★★★★★</span><b data-qv="rating"></b><small>Sample rating · demo store</small></div>
+      <p class="qv-price"><span data-qv="price"></span> <s><span class="sr-only">was </span><span data-qv="old"></span></s></p>
+      <p class="qv-desc" data-qv="desc"></p>
       <div>
-        <div class="label"><span id="qvColourLabel">Colour</span><output>${p.colorName}</output></div>
+        <div class="label"><span id="qvColourLabel">Colour</span><output data-qv="color"></output></div>
         <div class="color-dots" role="radiogroup" aria-labelledby="qvColourLabel">
-          ${PRODUCTS.map((o, i) => `<button class="color-dot" type="button" role="radio" data-qv-color="${i}" aria-checked="${i === qvState.index}" aria-label="${o.colorName}" style="${visualVars(o)}"><i></i></button>`).join('')}
+          ${PRODUCTS.map((o, i) => `<button class="color-dot" type="button" role="radio" data-qv-color="${i}" aria-checked="false" aria-label="${o.colorName}" style="${visualVars(o)}"><i></i></button>`).join('')}
         </div>
       </div>
       <div>
-        <div class="label"><span id="qvSizeLabel">Size</span><span>${p.fit}</span></div>
+        <div class="label"><span id="qvSizeLabel">Size</span><span data-qv="fit"></span></div>
         <div class="pill-group" role="radiogroup" aria-labelledby="qvSizeLabel">
-          ${p.sizes.map(s => `<button class="pill" type="button" role="radio" data-qv-size="${s}" aria-checked="${String(s) === qvState.size}">${s}</button>`).join('')}
+          ${PRODUCTS[0].sizes.map(sz => `<button class="pill" type="button" role="radio" data-qv-size="${sz}" aria-checked="false">${sz}</button>`).join('')}
         </div>
       </div>
       <div>
         <div class="label"><span id="qvQtyLabel">Quantity</span></div>
         <div class="qty" role="group" aria-labelledby="qvQtyLabel">
-          <button type="button" data-qv-qty="-1" aria-label="Decrease quantity" ${qvState.qty <= 1 ? 'disabled' : ''}><svg aria-hidden="true"><use href="#i-minus"/></svg></button>
-          <output aria-live="polite">${qvState.qty}</output>
-          <button type="button" data-qv-qty="1" aria-label="Increase quantity" ${qvState.qty >= MAX_QTY ? 'disabled' : ''}><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
+          <button type="button" data-qv-qty="-1" aria-label="Decrease quantity"><svg aria-hidden="true"><use href="#i-minus"/></svg></button>
+          <output aria-live="polite" data-qv="qty"></output>
+          <button type="button" data-qv-qty="1" aria-label="Increase quantity"><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
         </div>
       </div>
       <div class="qv-actions">
-        <button class="btn-solid" type="button" data-qv-add>Add to bag · ${money(p.price * qvState.qty)} <span class="btn-arrow"><svg aria-hidden="true"><use href="#i-plus"/></svg></span></button>
+        <button class="btn-solid" type="button" data-qv-add><span data-qv="add"></span> <span class="btn-arrow"><svg aria-hidden="true"><use href="#i-plus"/></svg></span></button>
         <button class="heart" type="button" data-wish="qv" aria-pressed="false" aria-label="Add to wishlist"><svg aria-hidden="true"><use href="#i-heart"/></svg></button>
       </div>
       <button class="link-btn" type="button" data-qv-show>Show in the showroom</button>
     </div>`;
+  qvFields = Object.fromEntries($$('[data-qv]', quickView).map(n => [n.dataset.qv, n]));
+  qvFields.dots  = $$('[data-qv-color]', quickView);
+  qvFields.sizes = $$('[data-qv-size]', quickView);
+  qvFields.dec = $('[data-qv-qty="-1"]', quickView);
+  qvFields.inc = $('[data-qv-qty="1"]', quickView);
+  qvFields.addBtn = $('[data-qv-add]', quickView);
+}
+function updateQuickView(){
+  const p = PRODUCTS[qvState.index];
+  if (!p || !qvFields) return;
+  const f = qvFields;
+  paintJacket(quickView, p.visual);                          // recolours the one jacket + the glow behind it
+  f.eyebrow.textContent = `${p.collection} · N°${pad2(qvState.index + 1)}`;
+  f.name.textContent = p.name;
+  f.stars.style.setProperty('--r', p.rating / 5);
+  f.rating.textContent = `${p.rating.toFixed(1)} / 5`;
+  f.price.textContent = money(p.price);
+  f.old.textContent = money(p.oldPrice);
+  f.desc.textContent = p.description;
+  f.color.textContent = p.colorName;
+  f.fit.textContent = p.fit;
+  f.qty.textContent = qvState.qty;
+  f.add.textContent = `Add to bag · ${money(p.price * qvState.qty)}`;
+  f.dots.forEach(d => d.setAttribute('aria-checked', +d.dataset.qvColor === qvState.index));
+  f.sizes.forEach(b => b.setAttribute('aria-checked', b.dataset.qvSize === qvState.size));
+  f.dec.disabled = qvState.qty <= 1;
+  f.inc.disabled = qvState.qty >= MAX_QTY;
   renderWish();
-  if (focusSel) $(focusSel, quickView)?.focus();
 }
 function openQuickView(i, opener){
   if (!PRODUCTS[i]) { toast('Sorry — that product is unavailable', 'error'); return; }
   qvState = { index:i, size:state.size, qty:1 };
-  renderQuickView();
+  buildQuickView();
+  updateQuickView();
   openLayer(quickView, opener);
 }
 quickView.addEventListener('click', e => {
   const t = e.target;
   const color = t.closest('[data-qv-color]'), size = t.closest('[data-qv-size]'), qty = t.closest('[data-qv-qty]');
-  if (color) { qvState.index = +color.dataset.qvColor; renderQuickView(`[data-qv-color="${qvState.index}"]`); }
-  else if (size) { qvState.size = size.dataset.qvSize; renderQuickView(`[data-qv-size="${qvState.size}"]`); }
+  if (color) { qvState.index = +color.dataset.qvColor; updateQuickView(); }
+  else if (size) { qvState.size = size.dataset.qvSize; updateQuickView(); }
   else if (qty) {
     qvState.qty = Math.max(1, Math.min(MAX_QTY, qvState.qty + +qty.dataset.qvQty));
-    const d = qty.dataset.qvQty;
-    renderQuickView(`[data-qv-qty="${d}"]:not([disabled])`);
-    if (!$(`[data-qv-qty="${d}"]:not([disabled])`, quickView)) $('[data-qv-add]', quickView).focus();
+    updateQuickView();
+    if (qty.disabled) qvFields.addBtn.focus();
   }
   else if (t.closest('[data-qv-add]')) {
     const p = PRODUCTS[qvState.index];
@@ -2758,6 +2865,53 @@ quickView.addEventListener('click', e => {
     window.scrollTo({ top:0, behavior:smooth() });
     setTimeout(() => selectProduct(i), 380);
   }
+});
+
+/* ==========================================================
+   SEARCH — results built once, filtered by toggling visibility
+   ========================================================== */
+const searchModal = ui('searchModal');
+let searchItems = null;
+function buildSearch(){
+  if (searchItems) return;
+  ui('searchResults').innerHTML = PRODUCTS.map((p, i) => `
+    <li><button class="search-hit" type="button" data-search="${i}">
+      <span class="thumb-box" style="${visualVars(p)}">${jacketHTML('s' + i, p, 'lite')}</span>
+      <span><b>${p.shortName}</b><small>${p.colorName} · ${p.collection}</small></span>
+      <span>${money(p.price)}</span>
+    </button></li>`).join('');
+  searchItems = $$('#searchResults li').map((li, i) => {
+    const p = PRODUCTS[i];
+    return { li, hay:`${p.name} ${p.colorName} ${p.tag} ${p.material} ${p.collection}`.toLowerCase() };
+  });
+}
+function filterSearch(){
+  const raw = ui('searchInput').value.trim();
+  const words = raw.toLowerCase().split(/\s+/).filter(Boolean);
+  let shown = 0;
+  searchItems.forEach(it => { const ok = words.every(w => it.hay.includes(w)); it.li.hidden = !ok; if (ok) shown++; });
+  const empty = ui('searchEmpty');
+  empty.hidden = shown > 0;
+  if (!shown) empty.textContent = `No jackets match “${raw}”.`;
+}
+ui('searchBtn').addEventListener('click', e => {
+  buildSearch();
+  ui('searchInput').value = '';
+  filterSearch();
+  openLayer(searchModal, e.currentTarget);
+});
+ui('searchInput').addEventListener('input', filterSearch);
+ui('searchInput').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const first = searchItems.find(it => !it.li.hidden);
+  if (first) first.li.querySelector('button').click();
+});
+searchModal.addEventListener('click', e => {
+  const hit = e.target.closest('[data-search]');
+  if (!hit) return;
+  closeLayer(searchModal, { restoreFocus:false });
+  openQuickView(+hit.dataset.search, ui('searchBtn'));
 });
 
 /* ==========================================================
@@ -2978,7 +3132,6 @@ contactForm.addEventListener('click', e => {
 renderCart();
 renderWish();
 
-$$('a[href="#"]').forEach(a => a.addEventListener('click', e => e.preventDefault()));
 
 /* end of the entrance: drop intro animations so nothing lingers */
 if (root.classList.contains('intro')) setTimeout(() => root.classList.remove('intro'), 2100);
